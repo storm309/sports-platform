@@ -1,298 +1,386 @@
 import React, { useEffect, useState } from "react";
-import { Users, Activity, TrendingUp, Video, Search, User, Zap, Timer, Trophy } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { 
+  Users, 
+  Activity, 
+  Trophy, 
+  Search, 
+  LogOut, 
+  PlayCircle, 
+  FileVideo, 
+  Zap, 
+  Dumbbell, 
+  Heart,
+  ArrowRightLeft,
+  TrendingUp,
+  LayoutGrid
+} from "lucide-react";
 
-// -----------------------------------------------------------------------------
-// ⚠️ IMPORTANT: FOR YOUR LOCAL PROJECT
-// Uncomment the line below and delete the temporary `const api` object following it.
-// -----------------------------------------------------------------------------
-import api from "../api/api"; 
+// --- MOCK API (Simulates Backend) ---
+const api = {
+  get: async (url) => {
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        if (url === "/coach/players") {
+          resolve({
+            data: [
+              { _id: "1", name: "Alex Johnson", email: "alex@team.com", position: "Forward" },
+              { _id: "2", name: "Sam Smith", email: "sam@team.com", position: "Midfielder" },
+              { _id: "3", name: "Jordan Lee", email: "jordan@team.com", position: "Defender" },
+              { _id: "4", name: "Casey West", email: "casey@team.com", position: "Goalkeeper" },
+            ]
+          });
+        } else if (url.includes("/performance")) {
+          resolve({
+            data: [
+              { _id: 101, sport: "Soccer", createdAt: new Date().toISOString(), speed: 85, stamina: 78, strength: 70, videoUrl: "https://youtube.com", videoFile: "/vid1.mp4" },
+              { _id: 102, sport: "Soccer", createdAt: new Date(Date.now() - 86400000).toISOString(), speed: 82, stamina: 75, strength: 72 },
+              { _id: 103, sport: "Gym", createdAt: new Date(Date.now() - 172800000).toISOString(), speed: 80, stamina: 80, strength: 75 },
+            ]
+          });
+        } else if (url.includes("/compare")) {
+          // Parse IDs from url for mock logic
+          resolve({
+            data: {
+              p1: { speed: Math.random() * 20 + 70, stamina: Math.random() * 20 + 70, strength: Math.random() * 20 + 70 },
+              p2: { speed: Math.random() * 20 + 70, stamina: Math.random() * 20 + 70, strength: Math.random() * 20 + 70 }
+            }
+          });
+        }
+      }, 600);
+    });
+  }
+};
 
-
-// -----------------------------------------------------------------------------
+// --- MOCK CHART COMPONENT (Placeholder) ---
+// In your real app, import your actual PerformanceChart
+const PerformanceChart = ({ data }) => (
+  <div className="h-48 flex items-end justify-between px-4 pb-4 gap-2">
+    {data.length === 0 ? (
+      <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+        Select a player to view chart
+      </div>
+    ) : (
+      data.map((d, i) => (
+        <div key={i} className="w-full bg-blue-500/20 rounded-t-lg relative group transition-all hover:bg-blue-500/40" style={{ height: `${(d.speed / 100) * 100}%` }}>
+          <div className="absolute bottom-0 w-full bg-blue-500/50 h-1/2 rounded-t-lg" style={{ height: `${(d.stamina / 100) * 100}%` }} />
+        </div>
+      ))
+    )}
+  </div>
+);
 
 export default function CoachDashboard() {
   const [players, setPlayers] = useState([]);
+  const [filteredPlayers, setFilteredPlayers] = useState([]);
   const [selected, setSelected] = useState(null);
   const [performance, setPerformance] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadingPerf, setLoadingPerf] = useState(false);
+  const [msg, setMsg] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Comparison State
+  const [p1, setP1] = useState("");
+  const [p2, setP2] = useState("");
+  const [compareData, setCompareData] = useState(null);
+  const [isComparing, setIsComparing] = useState(false);
+
+  const navigate = useNavigate();
 
   useEffect(() => {
     loadPlayers();
   }, []);
 
+  useEffect(() => {
+    setFilteredPlayers(
+      players.filter(p => p.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+  }, [searchTerm, players]);
+
   const loadPlayers = async () => {
     try {
       const res = await api.get("/coach/players");
-      // Safety check: ensure we always set an array
-      setPlayers(Array.isArray(res.data) ? res.data : []);
+      setPlayers(res.data);
+      setFilteredPlayers(res.data);
     } catch (err) {
       console.log("Error loading players", err);
-      setPlayers([]);
+      setMsg("Error loading players");
+    }
+  };
+
+  const loadPerformance = async (id) => {
+    try {
+      setSelected(id);
+      setIsLoading(true);
+      const res = await api.get(`/coach/player/${id}/performance`);
+      setPerformance(res.data);
+    } catch (err) {
+      console.log("Error loading performance", err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loadPerformance = async (id) => {
-    setSelected(id);
-    setLoadingPerf(true);
-    setPerformance([]); 
+  const comparePlayers = async () => {
+    if (!p1 || !p2 || p1 === p2) return;
     try {
-      const res = await api.get(`/coach/player/${id}/performance`);
-      setPerformance(Array.isArray(res.data) ? res.data : []);
+      setIsComparing(true);
+      const res = await api.get(`/coach/compare?p1=${p1}&p2=${p2}`);
+      setCompareData(res.data);
     } catch (err) {
-      console.log("Error loading performance", err);
+      console.log(err);
     } finally {
-      setLoadingPerf(false);
+      setIsComparing(false);
     }
   };
 
-  // Filter players based on search term
-  const filteredPlayers = players.filter(p => 
-    p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    p.email?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const logout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    navigate("/login");
+  };
 
   return (
-    <div className="min-h-screen bg-[#0B1120] text-slate-100 font-sans relative overflow-hidden p-4 md:p-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans relative overflow-hidden p-4 md:p-6">
       
-      {/* BACKGROUND EFFECTS */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-[-20%] left-[-10%] w-[60vw] h-[60vw] bg-blue-600/10 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-20%] right-[-10%] w-[60vw] h-[60vw] bg-emerald-600/10 rounded-full blur-[120px]"></div>
-        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20"></div>
+      {/* ANIMATED BACKGROUND */}
+      <div className="fixed inset-0 z-0 pointer-events-none">
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-blue-950/20 to-slate-900" />
+        <div className="absolute top-[-20%] left-[20%] w-[500px] h-[500px] bg-emerald-500/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[120px]" />
       </div>
 
-      {/* DASHBOARD CONTENT */}
-      <div className="relative z-10 max-w-7xl mx-auto">
+      <div className="relative z-10 max-w-7xl mx-auto space-y-6">
         
-        {/* Header */}
-        <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in-down">
+        {/* HEADER */}
+        <div className="flex justify-between items-center bg-slate-900/50 backdrop-blur-xl p-4 rounded-2xl border border-white/5">
           <div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-2 flex items-center gap-3">
-              <div className="p-2 bg-blue-600/20 rounded-lg border border-blue-500/30">
-                <Activity className="w-8 h-8 text-blue-400" />
-              </div>
+            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-emerald-200 to-blue-400 bg-clip-text text-transparent flex items-center gap-3">
+              <LayoutGrid className="w-8 h-8 text-blue-400" />
               Coach Dashboard
             </h1>
-            <p className="text-slate-400">Manage your team and analyze player metrics</p>
           </div>
+          <button
+            onClick={logout}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-red-500/20 text-slate-300 hover:text-red-400 border border-slate-700 hover:border-red-500/50 rounded-xl transition-all duration-300"
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Logout</span>
+          </button>
+        </div>
+
+        {/* FEEDBACK MSG */}
+        {msg && <div className="p-3 bg-red-500/20 border border-red-500/50 text-red-200 rounded-xl text-center">{msg}</div>}
+
+        {/* MAIN GRID */}
+        <div className="grid lg:grid-cols-12 gap-6 h-[calc(100vh-140px)] min-h-[600px]">
           
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-800/50 backdrop-blur-md border border-slate-700 rounded-full px-4 py-2 flex items-center gap-2 text-slate-400 focus-within:border-blue-500/50 focus-within:text-blue-400 transition-colors">
-                <Search className="w-4 h-4" />
+          {/* LEFT COLUMN: PLAYER LIST (3 Cols) */}
+          <div className="lg:col-span-3 bg-slate-900/60 backdrop-blur-2xl rounded-3xl border border-white/10 flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-5 border-b border-white/5">
+              <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                <Users className="w-5 h-5 text-emerald-400" />
+                Roster
+              </h2>
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-3 text-slate-500" />
                 <input 
                   type="text" 
-                  placeholder="Search players..." 
-                  className="bg-transparent border-none focus:outline-none text-sm w-32 md:w-48 text-slate-200 placeholder-slate-500" 
+                  placeholder="Find player..." 
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2.5 pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
-            </div>
-          </div>
-        </header>
-
-        <div className="grid lg:grid-cols-12 gap-8">
-          
-          {/* LEFT COLUMN: Player List */}
-          <div className="lg:col-span-5 space-y-6 animate-slide-up">
-            <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-700/50 rounded-3xl overflow-hidden shadow-xl flex flex-col h-[600px]">
-              
-              <div className="p-6 border-b border-slate-700/50 bg-slate-800/30 flex justify-between items-center">
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                  <Users className="w-5 h-5 text-emerald-400" />
-                  Team Roster
-                </h2>
-                <span className="bg-slate-700 text-xs font-bold px-2 py-1 rounded text-slate-300">
-                  {filteredPlayers.length} Players
-                </span>
-              </div>
-
-              <div className="overflow-y-auto flex-1 p-4 space-y-2 custom-scrollbar">
-                {isLoading ? (
-                  <div className="flex flex-col items-center justify-center h-40 text-slate-500 space-y-4">
-                    <div className="w-8 h-8 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
-                    <p>Loading roster...</p>
-                  </div>
-                ) : filteredPlayers.length === 0 ? (
-                  <div className="text-center p-8 text-slate-500">
-                    {players.length === 0 ? "No players found." : "No matches found."}
-                  </div>
-                ) : (
-                  filteredPlayers.map((p) => (
-                    <button
-                      key={p._id}
-                      onClick={() => loadPerformance(p._id)}
-                      className={`w-full text-left group p-4 rounded-2xl transition-all duration-300 border flex items-center gap-4 relative overflow-hidden
-                        ${selected === p._id 
-                          ? "bg-blue-600/20 border-blue-500/50 shadow-[0_0_20px_rgba(37,99,235,0.1)]" 
-                          : "bg-slate-800/40 border-slate-700/30 hover:bg-slate-700/50 hover:border-slate-600"
-                        }`}
-                    >
-                      {/* Selection Indicator Line */}
-                      {selected === p._id && (
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500"></div>
-                      )}
-
-                      {/* Avatar Placeholder */}
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center shrink-0 transition-colors
-                        ${selected === p._id ? 'bg-blue-500 text-white' : 'bg-slate-700 text-slate-400 group-hover:bg-slate-600 group-hover:text-slate-200'}`}>
-                        <User className="w-6 h-6" />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start">
-                            <h3 className={`font-semibold truncate ${selected === p._id ? 'text-blue-100' : 'text-slate-200'}`}>
-                                {p.name}
-                            </h3>
-                            {/* Only show status if it exists in backend data */}
-                            {p.status && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-bold bg-slate-700/50 text-slate-400">
-                                    {p.status}
-                                </span>
-                            )}
-                        </div>
-                        <p className="text-sm text-slate-400 truncate">{p.email}</p>
-                        {/* Only show role if it exists in backend data */}
-                        {p.role && (
-                          <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-medium">{p.role}</p>
-                        )}
-                      </div>
-                    </button>
-                  ))
-                )}
               </div>
             </div>
-          </div>
-
-          {/* RIGHT COLUMN: Performance Details */}
-          <div className="lg:col-span-7 animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            <div className="bg-slate-900/60 backdrop-blur-xl border border-slate-700/50 rounded-3xl overflow-hidden shadow-xl h-[600px] flex flex-col">
-              
-              <div className="p-6 border-b border-slate-700/50 bg-slate-800/30">
-                <h2 className="text-xl font-semibold flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-blue-400" />
-                  Performance Metrics
-                </h2>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 bg-slate-900/30">
-                {!selected ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
-                    <div className="p-4 bg-slate-800/50 rounded-full border border-slate-700">
-                        <User className="w-12 h-12 opacity-50" />
+            
+            <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
+              {filteredPlayers.length === 0 ? (
+                <div className="text-center p-6 text-slate-500 text-sm">No players found</div>
+              ) : (
+                filteredPlayers.map((p) => (
+                  <div
+                    key={p._id}
+                    onClick={() => loadPerformance(p._id)}
+                    className={`p-3 rounded-xl cursor-pointer transition-all duration-200 flex items-center gap-3 border ${
+                      selected === p._id
+                        ? "bg-gradient-to-r from-blue-600/20 to-emerald-600/20 border-emerald-500/30 shadow-lg"
+                        : "bg-slate-800/30 border-transparent hover:bg-slate-800 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${
+                      selected === p._id ? "bg-emerald-500 text-white" : "bg-slate-700 text-slate-400"
+                    }`}>
+                      {p.name.charAt(0)}
                     </div>
-                    <p className="text-lg">Select a player from the roster to view details</p>
+                    <div>
+                      <div className={`font-medium ${selected === p._id ? "text-white" : "text-slate-200"}`}>{p.name}</div>
+                      <div className="text-xs text-slate-500">{p.position || "Player"}</div>
+                    </div>
                   </div>
-                ) : loadingPerf ? (
-                   <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4">
-                    <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin"></div>
-                    <p>Fetching performance data...</p>
-                  </div>
-                ) : performance.length === 0 ? (
-                  <div className="text-center p-8 text-slate-500">No performance records found for this player.</div>
-                ) : (
-                  <div className="space-y-4">
-                    {performance.map((p, index) => (
-                      <div
-                        key={p._id || index}
-                        className="group bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/50 hover:border-slate-600 rounded-2xl p-5 transition-all duration-300 shadow-sm hover:shadow-lg"
-                      >
-                        <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4 border-b border-slate-700/50 pb-4">
-                            <div>
-                                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                                    {p.sport}
-                                    {/* Only show date if it exists */}
-                                    {p.date && (
-                                      <span className="text-xs font-normal text-slate-400 bg-slate-700/50 px-2 py-1 rounded-md">{p.date}</span>
-                                    )}
-                                </h3>
-                            </div>
-                            {p.video ? (
-                                <a href={p.video} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs font-bold text-blue-400 bg-blue-500/10 px-3 py-1.5 rounded-full hover:bg-blue-500/20 transition-colors">
-                                    <Video className="w-3 h-3" />
-                                    Watch Replay
-                                </a>
-                            ) : (
-                                <span className="text-xs font-bold text-slate-500 bg-slate-700/30 px-3 py-1.5 rounded-full flex items-center gap-2 cursor-not-allowed">
-                                    <Video className="w-3 h-3" />
-                                    No Video
-                                </span>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                            {/* Score */}
-                            <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-700/30 flex flex-col items-center text-center">
-                                <div className="mb-2 p-2 bg-purple-500/10 rounded-full">
-                                    <Trophy className="w-4 h-4 text-purple-400" />
-                                </div>
-                                <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Score</span>
-                                <span className="text-lg font-mono text-purple-200 mt-1">{p.score || "-"}</span>
-                            </div>
-
-                             {/* Speed */}
-                             <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-700/30 flex flex-col items-center text-center">
-                                <div className="mb-2 p-2 bg-emerald-500/10 rounded-full">
-                                    <Timer className="w-4 h-4 text-emerald-400" />
-                                </div>
-                                <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Speed</span>
-                                <span className="text-lg font-mono text-emerald-200 mt-1">{p.speed || "-"}</span>
-                            </div>
-
-                             {/* Stamina */}
-                             <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-700/30 flex flex-col items-center text-center">
-                                <div className="mb-2 p-2 bg-amber-500/10 rounded-full">
-                                    <Zap className="w-4 h-4 text-amber-400" />
-                                </div>
-                                <span className="text-xs text-slate-400 uppercase tracking-wider font-bold">Stamina</span>
-                                <span className="text-lg font-mono text-amber-200 mt-1">{p.stamina || "-"}</span>
-                            </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                ))
+              )}
             </div>
           </div>
 
+          {/* MIDDLE COLUMN: PERFORMANCE FEED (5 Cols) */}
+          <div className="lg:col-span-5 bg-slate-900/60 backdrop-blur-2xl rounded-3xl border border-white/10 flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-5 border-b border-white/5 bg-slate-900/40">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Activity className="w-5 h-5 text-blue-400" />
+                {selected ? "Performance History" : "Performance Feed"}
+              </h2>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 custom-scrollbar">
+              {!selected ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-3 opacity-60">
+                  <PlayCircle className="w-12 h-12" />
+                  <p>Select a player to view performance</p>
+                </div>
+              ) : performance.length === 0 ? (
+                <div className="text-center p-8 text-slate-500">No performance records found.</div>
+              ) : (
+                <div className="space-y-4">
+                  {performance.map((p) => (
+                    <div key={p._id} className="relative pl-6 before:absolute before:left-[7px] before:top-2 before:bottom-[-24px] before:w-[2px] before:bg-slate-800 last:before:hidden">
+                      {/* Timeline Dot */}
+                      <div className="absolute left-0 top-2 w-4 h-4 rounded-full border-[3px] border-slate-900 bg-blue-500 z-10"></div>
+                      
+                      <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-4 hover:bg-slate-800 transition-colors">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <span className="text-xs font-bold uppercase tracking-wider text-blue-400">{p.sport}</span>
+                            <div className="text-xs text-slate-500 mt-1">{new Date(p.createdAt).toLocaleDateString()} at {new Date(p.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                          </div>
+                          {(p.videoUrl || p.videoFile) && (
+                            <div className="flex gap-2">
+                              {p.videoUrl && <a href={p.videoUrl} target="_blank" rel="noreferrer" className="p-1.5 bg-red-500/10 text-red-400 rounded-lg hover:bg-red-500/20 transition"><PlayCircle className="w-4 h-4" /></a>}
+                              {p.videoFile && <a href={`http://localhost:5000${p.videoFile}`} target="_blank" rel="noreferrer" className="p-1.5 bg-teal-500/10 text-teal-400 rounded-lg hover:bg-teal-500/20 transition"><FileVideo className="w-4 h-4" /></a>}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="bg-slate-900/50 p-2 rounded-xl text-center border border-slate-700/30">
+                            <Zap className="w-4 h-4 text-yellow-400 mx-auto mb-1" />
+                            <div className="text-lg font-bold text-white">{p.speed}</div>
+                            <div className="text-[10px] text-slate-500 uppercase">Speed</div>
+                          </div>
+                          <div className="bg-slate-900/50 p-2 rounded-xl text-center border border-slate-700/30">
+                            <Heart className="w-4 h-4 text-red-400 mx-auto mb-1" />
+                            <div className="text-lg font-bold text-white">{p.stamina}</div>
+                            <div className="text-[10px] text-slate-500 uppercase">Stamina</div>
+                          </div>
+                          <div className="bg-slate-900/50 p-2 rounded-xl text-center border border-slate-700/30">
+                            <Dumbbell className="w-4 h-4 text-purple-400 mx-auto mb-1" />
+                            <div className="text-lg font-bold text-white">{p.strength}</div>
+                            <div className="text-[10px] text-slate-500 uppercase">Strength</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: ANALYTICS (4 Cols) */}
+          <div className="lg:col-span-4 space-y-6 flex flex-col">
+            
+            {/* Chart Card */}
+            <div className="bg-slate-900/60 backdrop-blur-2xl rounded-3xl border border-white/10 p-5 shadow-2xl relative overflow-hidden">
+               <div className="flex justify-between items-center mb-4">
+                 <h2 className="text-lg font-semibold flex items-center gap-2">
+                   <TrendingUp className="w-5 h-5 text-purple-400" />
+                   Trends
+                 </h2>
+               </div>
+               <div className="bg-slate-800/50 rounded-2xl pt-4 border border-slate-700/30">
+                 <PerformanceChart data={performance} />
+               </div>
+            </div>
+
+            {/* Comparison Card */}
+            <div className="bg-slate-900/60 backdrop-blur-2xl rounded-3xl border border-white/10 p-5 shadow-2xl flex-1">
+              <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                <ArrowRightLeft className="w-5 h-5 text-orange-400" />
+                Head-to-Head
+              </h2>
+              
+              <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700/30 space-y-3">
+                <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                  <select 
+                    value={p1} 
+                    onChange={(e) => setP1(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 text-xs rounded-lg p-2 focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option value="">Player 1</option>
+                    {players.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+                  </select>
+                  
+                  <span className="text-slate-500 text-xs font-bold">VS</span>
+                  
+                  <select 
+                    value={p2} 
+                    onChange={(e) => setP2(e.target.value)}
+                    className="w-full bg-slate-900 border border-slate-700 text-xs rounded-lg p-2 focus:ring-1 focus:ring-red-500"
+                  >
+                    <option value="">Player 2</option>
+                    {players.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
+                  </select>
+                </div>
+                
+                <button
+                  onClick={comparePlayers}
+                  disabled={!p1 || !p2 || p1 === p2 || isComparing}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-all"
+                >
+                  {isComparing ? "Analyzing..." : "Compare Stats"}
+                </button>
+              </div>
+
+              {/* Comparison Results */}
+              {compareData && (
+                <div className="mt-4 space-y-3 animate-in fade-in slide-in-from-bottom-2">
+                  {[
+                    { label: "Speed", key: "speed", icon: Zap, color: "text-yellow-400" },
+                    { label: "Stamina", key: "stamina", icon: Heart, color: "text-red-400" },
+                    { label: "Strength", key: "strength", icon: Dumbbell, color: "text-purple-400" },
+                  ].map((stat) => (
+                    <div key={stat.key} className="bg-slate-800/30 p-3 rounded-xl border border-slate-700/30">
+                      <div className="flex justify-between text-xs text-slate-400 mb-1">
+                        <span>P1</span>
+                        <span className={`uppercase font-bold ${stat.color} flex items-center gap-1`}>
+                          <stat.icon className="w-3 h-3" /> {stat.label}
+                        </span>
+                        <span>P2</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-sm font-bold w-8 text-right">{compareData.p1[stat.key].toFixed(0)}</div>
+                        <div className="flex-1 h-2 bg-slate-700 rounded-full overflow-hidden flex">
+                          {/* Visual Bar Comparison */}
+                          <div 
+                            className="h-full bg-blue-500" 
+                            style={{ width: `${(compareData.p1[stat.key] / (compareData.p1[stat.key] + compareData.p2[stat.key])) * 100}%` }} 
+                          />
+                          <div 
+                            className="h-full bg-red-500" 
+                            style={{ width: `${(compareData.p2[stat.key] / (compareData.p1[stat.key] + compareData.p2[stat.key])) * 100}%` }} 
+                          />
+                        </div>
+                        <div className="text-sm font-bold w-8">{compareData.p2[stat.key].toFixed(0)}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
         </div>
       </div>
-
-      <style jsx global>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(30, 41, 59, 0.5); 
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(71, 85, 105, 0.8); 
-          border-radius: 10px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(100, 116, 139, 1); 
-        }
-        
-        @keyframes fade-in-down {
-          from { opacity: 0; transform: translateY(-20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-fade-in-down {
-          animation: fade-in-down 0.8s ease-out forwards;
-        }
-
-        @keyframes slide-up {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-slide-up {
-          animation: slide-up 0.8s ease-out forwards;
-        }
-      `}</style>
     </div>
   );
 }

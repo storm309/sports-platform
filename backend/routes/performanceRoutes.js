@@ -1,20 +1,79 @@
+// backend/routes/performanceRoutes.js
 const express = require("express");
 const router = express.Router();
+const multer = require("multer");
+const path = require("path");
 
-const authMiddleware = require("../middleware/authMiddleware");
-const {
-  addPerformance,
-  getMyPerformance,
-  getAllPerformance
-} = require("../controllers/performanceController");
+const auth = require("../middleware/authMiddleware");
+const Performance = require("../models/Performance");
 
-// Player apni performance add karega
-router.post("/add", authMiddleware, addPerformance);
+// ---------- Multer config for video upload ----------
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, path.join(__dirname, "..", "uploads"));
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `video_${Date.now()}${ext}`);
+  },
+});
 
-// Player apni hi performances dekhega
-router.get("/my", authMiddleware, getMyPerformance);
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("video/")) cb(null, true);
+  else cb(new Error("Only video files allowed"), false);
+};
 
-// Coach sabki performances dekhega (abhi simple, baad me role check add kar sakte)
-router.get("/all", authMiddleware, getAllPerformance);
+const upload = multer({ storage, fileFilter });
+
+// ---------- 1) Add performance (with optional video upload) ----------
+router.post(
+  "/add",
+  auth,
+  upload.single("videoFile"), // accept file field "videoFile"
+  async (req, res) => {
+    try {
+      const { sport, speed, stamina, strength, videoUrl } = req.body;
+
+      const perf = new Performance({
+        userId: req.userId,
+        sport,
+        speed,
+        stamina,
+        strength,
+        videoUrl: videoUrl || "",
+        videoFile: req.file ? `/uploads/${req.file.filename}` : "",
+      });
+
+      await perf.save();
+      res.json({ message: "Performance saved", performance: perf });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: "Error saving performance" });
+    }
+  }
+);
+
+// ---------- 2) Player: get own performances ----------
+router.get("/my", auth, async (req, res) => {
+  try {
+    const data = await Performance.find({ userId: req.userId }).sort({ createdAt: -1 });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ---------- 3) Coach/Admin: get all performances (optional) ----------
+router.get("/all", auth, async (req, res) => {
+  try {
+    if (req.user.role !== "coach" && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const data = await Performance.find().sort({ createdAt: -1 });
+    res.json(data);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 module.exports = router;
